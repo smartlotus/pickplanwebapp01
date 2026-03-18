@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Pickplan PWA for iOS and mobile web.">
+  <meta name="theme-color" content="#000000">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Pickplan">
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <title>Pickplan</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --boot-bg: #ffffff;
+      --boot-fg: #111111;
+      --boot-muted: rgba(17, 17, 17, 0.58);
+      --boot-border: rgba(17, 17, 17, 0.08);
+      --boot-shadow: rgba(17, 17, 17, 0.12);
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--boot-bg);
+    }
+
+    body {
+      overflow: hidden;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    }
+
+    #boot-shell {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--boot-bg);
+      z-index: 9999;
+      opacity: 1;
+      transition: opacity 220ms ease;
+    }
+
+    #boot-shell.boot-hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .boot-mark {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform: translateY(-4px);
+    }
+
+    .boot-logo {
+      width: 120px;
+      height: 120px;
+      border-radius: 28px;
+      object-fit: cover;
+      background: #000;
+      box-shadow: 0 16px 34px var(--boot-shadow);
+      border: 1px solid var(--boot-border);
+    }
+
+    .boot-title {
+      margin-top: 24px;
+      color: var(--boot-fg);
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 3px;
+    }
+
+    .boot-subtitle {
+      margin-top: 8px;
+      color: var(--boot-muted);
+      font-size: 13px;
+      letter-spacing: 0.4px;
+    }
+
+    .boot-help {
+      position: fixed;
+      left: 50%;
+      bottom: max(32px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      z-index: 10000;
+    }
+
+    .boot-help-text {
+      color: var(--boot-muted);
+      font-size: 13px;
+      letter-spacing: 0.2px;
+    }
+
+    .boot-retry {
+      border: 1px solid var(--boot-border);
+      border-radius: 999px;
+      background: #fff;
+      color: #111;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      box-shadow: 0 8px 18px var(--boot-shadow);
+    }
+  </style>
+</head>
+<body>
+  <div id="boot-shell" aria-hidden="true">
+    <div class="boot-mark">
+      <img class="boot-logo" src="assets/assets/pickplanlogo.jpg" alt="Pickplan logo">
+      <div class="boot-title">PICKPLAN</div>
+      <div class="boot-subtitle">&#20570;&#35745;&#21010;&#65292;&#35828;&#22823;&#30333;&#35805;</div>
+    </div>
+  </div>
+  <div id="boot-help" class="boot-help" hidden>
+    <div id="boot-help-text" class="boot-help-text">加载较慢，点击重试</div>
+    <button id="boot-retry" class="boot-retry" type="button">重试</button>
+  </div>
+  <script src="cache_guard.js"></script>
+  <script src="push_config.js" defer></script>
+  <script src="push_client.js" defer></script>
+  <script>
+    (function () {
+      var shell = document.getElementById('boot-shell');
+      var help = document.getElementById('boot-help');
+      var helpText = document.getElementById('boot-help-text');
+      var retryButton = document.getElementById('boot-retry');
+
+      var firstFrameReceived = false;
+      var bootstrapAttempts = 0;
+      var firstFrameTimer = null;
+      var bootstrapWatchdogTimer = null;
+
+      var MAX_BOOTSTRAP_ATTEMPTS = 2;
+      var FIRST_FRAME_TIMEOUT_MS = 10000;
+      var BOOTSTRAP_LOAD_TIMEOUT_MS = 5000;
+      var BOOTSTRAP_RETRY_DELAY_MS = 700;
+
+      function clearBootTimers() {
+        if (firstFrameTimer) {
+          window.clearTimeout(firstFrameTimer);
+          firstFrameTimer = null;
+        }
+        if (bootstrapWatchdogTimer) {
+          window.clearTimeout(bootstrapWatchdogTimer);
+          bootstrapWatchdogTimer = null;
+        }
+      }
+
+      function removeBootstrapScripts() {
+        var scripts = document.querySelectorAll('script[data-pickplan-flutter-bootstrap=\"1\"]');
+        scripts.forEach(function (node) {
+          if (node && node.parentNode) {
+            node.parentNode.removeChild(node);
+          }
+        });
+      }
+
+      function hideShell() {
+        if (!shell) return;
+        shell.classList.add('boot-hidden');
+        if (help) help.hidden = true;
+        window.setTimeout(function () {
+          if (shell.parentNode) shell.parentNode.removeChild(shell);
+          if (help && help.parentNode) help.parentNode.removeChild(help);
+        }, 260);
+      }
+
+      function showSlowHint(reason) {
+        if (!help) return;
+        help.hidden = false;
+        if (helpText) {
+          helpText.textContent =
+            reason === 'script'
+              ? '启动资源加载失败，请重试'
+              : '启动较慢，请点击重试';
+        }
+      }
+
+      function scheduleFirstFrameTimeout() {
+        clearBootTimers();
+        firstFrameTimer = window.setTimeout(function () {
+          if (firstFrameReceived) return;
+          showSlowHint('first-frame');
+        }, FIRST_FRAME_TIMEOUT_MS);
+      }
+
+      function bootFlutter() {
+        if (firstFrameReceived) return;
+        bootstrapAttempts += 1;
+        removeBootstrapScripts();
+
+        var flutterBootstrap = document.createElement('script');
+        flutterBootstrap.src = 'flutter_bootstrap.js';
+        flutterBootstrap.async = true;
+        flutterBootstrap.setAttribute('data-pickplan-flutter-bootstrap', '1');
+
+        flutterBootstrap.onload = function () {
+          if (firstFrameReceived) return;
+          bootstrapWatchdogTimer = window.setTimeout(function () {
+            if (firstFrameReceived) return;
+            if (bootstrapAttempts < MAX_BOOTSTRAP_ATTEMPTS) {
+              window.setTimeout(bootFlutter, BOOTSTRAP_RETRY_DELAY_MS);
+              return;
+            }
+            showSlowHint('script');
+          }, BOOTSTRAP_LOAD_TIMEOUT_MS);
+        };
+
+        flutterBootstrap.onerror = function () {
+          if (firstFrameReceived) return;
+          if (bootstrapAttempts < MAX_BOOTSTRAP_ATTEMPTS) {
+            window.setTimeout(bootFlutter, BOOTSTRAP_RETRY_DELAY_MS);
+            return;
+          }
+          showSlowHint('script');
+        };
+
+        document.body.appendChild(flutterBootstrap);
+      }
+
+      function startBoot() {
+        scheduleFirstFrameTimeout();
+        bootFlutter();
+      }
+
+      window.addEventListener('flutter-first-frame', function () {
+        firstFrameReceived = true;
+        clearBootTimers();
+        hideShell();
+      }, { once: true });
+
+      if (retryButton) {
+        retryButton.addEventListener('click', function () {
+          firstFrameReceived = false;
+          bootstrapAttempts = 0;
+          if (help) help.hidden = true;
+          startBoot();
+        });
+      }
+
+      var isForceClear = window.location.search.indexOf('clear_cache=1') !== -1;
+      if (isForceClear) {
+        (window.__pickplanCacheGuardReady || Promise.resolve()).finally(startBoot);
+        return;
+      }
+
+      // Do not block startup on network checks; cache guard runs in parallel.
+      startBoot();
+      (window.__pickplanCacheGuardReady || Promise.resolve()).catch(function () {});
+    })();
+  </script>
+</body>
+</html>

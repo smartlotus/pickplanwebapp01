@@ -1,0 +1,17 @@
+name = "pickplan-push"
+main = "src/index.js"
+compatibility_date = "2026-03-18"
+compatibility_flags = ["nodejs_compat", "enable_nodejs_http_modules"]
+workers_dev = true
+
+[triggers]
+crons = ["* * * * *"]
+
+[[kv_namespaces]]
+binding = "SUBSCRIPTIONS"
+
+[[kv_namespaces]]
+binding = "JOBS"
+
+[observability.logs]
+enabled = true

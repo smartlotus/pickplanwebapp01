@@ -1,0 +1,74 @@
+name: Deploy Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - assets/**
+      - lib/**
+      - web/**
+      - pubspec.yaml
+      - pubspec.lock
+      - .github/workflows/deploy-pages.yml
+  workflow_dispatch:
+
+jobs:
+  deploy-pages:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Flutter pub get
+        run: flutter pub get
+
+      - name: Build web
+        shell: bash
+        run: |
+          if flutter build web --help | grep -q -- "--web-renderer"; then
+            flutter build web --release --web-renderer html
+          else
+            flutter build web --release
+          fi
+
+      - name: Write release version metadata
+        shell: bash
+        run: |
+          cat > build/web/version.json <<EOF
+          {
+            "version": "${GITHUB_SHA}",
+            "build_number": "${GITHUB_RUN_NUMBER}"
+          }
+          EOF
+
+      - name: Inject push backend URL
+        shell: bash
+        env:
+          PICKPLAN_PUSH_BACKEND_BASE_URL: ${{ secrets.PICKPLAN_PUSH_BACKEND_BASE_URL }}
+        run: |
+          if [ -n "${PICKPLAN_PUSH_BACKEND_BASE_URL}" ]; then
+            sed -i "s|__PICKPLAN_PUSH_BACKEND_BASE_URL__|${PICKPLAN_PUSH_BACKEND_BASE_URL}|g" build/web/push_config.js
+          else
+            echo "PICKPLAN_PUSH_BACKEND_BASE_URL is empty. Skip URL injection."
+          fi
+
+      - name: Deploy to Cloudflare Pages
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_PAGES_API_TOKEN }}
+        run: |
+          npx wrangler@4 pages deploy build/web --project-name="${{ secrets.CLOUDFLARE_PAGES_PROJECT_NAME }}"

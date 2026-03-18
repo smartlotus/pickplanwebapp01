@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拾念待办 - 重新定义你的任务记忆</title>
+    <style>
+        /* ================= 字体与全局变量 ================= */
+        @font-face {
+            font-family: 'Millik';
+            font-weight: 700;
+            src: url('./else/asset/font/Millik.c3f91cb.ttf') format("truetype");
+            text-rendering: optimizeLegibility;
+        }
+
+        :root {
+            --post-spacing: 1.78vw;
+            --post-size: 25vw;
+            --mask-size: 100vw;
+            --primary-bg: #ffffff;
+            --text-main: #171717;
+            --accent-color: #000000;
+        }
+
+        @media (max-width: 768px) {
+            :root {
+                --post-size: 70vw;
+                --post-spacing: 4vw;
+            }
+        }
+
+        * {
+            padding: 0;
+            margin: 0;
+            font-family: 'Millik', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+            box-sizing: border-box;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background: var(--primary-bg);
+            /* 引用你本地的SVG网格背景 */
+            background-image: url('./else/asset/image/grid.svg');
+            background-repeat: repeat;
+            background-size: 300px 300px;
+            color: var(--text-main);
+            overflow-x: hidden;
+        }
+
+        /* ================= Hero / Slogan 区块 ================= */
+        .hero-section {
+            width: 100%;
+            height: 30vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-end;
+            text-align: center;
+            padding-bottom: 2rem;
+            position: relative;
+            z-index: 10;
+        }
+
+        .hero-section h1 {
+            font-size: clamp(2.5rem, 5vw, 5rem);
+            font-weight: 800;
+            white-space: nowrap;
+            letter-spacing: -1px;
+        }
+
+        .hero-section p {
+            font-family: 'PingFang SC', sans-serif;
+            font-size: clamp(1rem, 1.5vw, 1.2rem);
+            font-weight: 400;
+            color: #555;
+            margin-top: 10px;
+            max-width: 600px;
+        }
+        
+        .cta-btn {
+            margin-top: 20px;
+            padding: 12px 32px;
+            background-color: var(--accent-color);
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            font-family: 'PingFang SC', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .cta-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 25px rgba(0,0,0,0.2);
+        }
+
+        /* ================= 动态截图画廊 (Banner) ================= */
+        #banner {
+            overflow: hidden;
+            position: relative;
+            width: 100vw;
+            height: calc(var(--post-size) / 0.72);
+            /* 原版灵魂 Mask 遮罩，让边缘融入背景 */
+            -webkit-mask: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDQwIiBoZWlnaHQ9IjUwMCIgdmlld0JveD0iMCAwIDE0NDAgNTAwIiBpZD0iaiI+CiAgPHBhdGggZmlsbD0icmdiKDIwMCwyMDAsMjAwKSIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMCAwczI3NS4wNCAxMDAgNzIwIDEwMFMxNDQwIDAgMTQ0MCAwdjUwMHMtMjc1LjA0LTEwMC03MjAtMTAwUzAgNTAwIDAgNTAwVjB6Ii8+Cjwvc3ZnPgo=);
+            mask: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNDQwIiBoZWlnaHQ9IjUwMCIgdmlld0JveD0iMCAwIDE0NDAgNTAwIiBpZD0iaiI+CiAgPHBhdGggZmlsbD0icmdiKDIwMCwyMDAsMjAwKSIgZmlsbC1ydWxlPSJldmVub2RkIiBkPSJNMCAwczI3NS4wNCAxMDAgNzIwIDEwMFMxNDQwIDAgMTQ0MCAwdjUwMHMtMjc1LjA0LTEwMC03MjAtMTAwUzAgNTAwIDAgNTAwVjB6Ii8+Cjwvc3ZnPgo=);
+            -webkit-mask-repeat: no-repeat;
+            mask-repeat: no-repeat;
+            -webkit-mask-position: center;
+            mask-position: center;
+            -webkit-mask-size: var(--mask-size);
+            mask-size: var(--mask-size);
+            margin-top: 2vh;
+        }
+
+        #banner .img-wrapper {
+            display: flex;
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            transform: translate(13.39vw, 0);
+            animation: admission 1.5s;
+        }
+
+        #banner .img-wrapper .img-box {
+            height: 100%;
+            display: inline-block;
+            margin-right: var(--post-spacing);
+            position: relative;
+            cursor: pointer;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+        }
+
+        #banner .img-wrapper .img-box .info {
+            position: absolute;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding-bottom: 20px;
+            left: 0;
+            bottom: 0;
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.8) 100%);
+            text-align: center;
+            color: #fff;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        #banner .img-wrapper .img-box:hover .info {
+            opacity: 1;
+        }
+
+        #banner .img-wrapper .img-box .info h3 {
+            font-family: 'PingFang SC', sans-serif;
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+
+        #banner .img-wrapper .img-box img {
+            width: var(--post-size);
+            height: 100%;
+            object-position: center;
+            object-fit: cover;
+            background-color: #f5f5f5; /* Placeholder bg */
+        }
+
+        /* ================= 悬浮控制按钮 ================= */
+        .btn-group {
+            height: 15vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: -5vh; /* 微微嵌入 banner 底部 */
+            position: relative;
+            z-index: 20;
+        }
+
+        .btn-group .btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 1px solid #171717;
+            background-color: #fff;
+            margin: 0 15px;
+            cursor: pointer;
+            transition: 0.4s;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+
+        .btn-group .btn:hover {
+            transform: scale(1.15);
+            background-color: #000;
+        }
+
+        .btn-group .btn:hover .icon {
+            fill: #fff;
+        }
+
+        .btn-group .btn .icon {
+            width: 24px;
+            height: 24px;
+            transition: fill 0.3s ease;
+        }
+
+        .btn-group .btn .right {
+            transform: rotate(180deg);
+        }
+
+        /* ================= 核心功能区块 ================= */
+        .features-section {
+            max-width: 1200px;
+            margin: 8vh auto 10vh;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 40px;
+            font-family: 'PingFang SC', sans-serif;
+        }
+
+        .feature-card {
+            background: #fff;
+            border: 2px solid #171717;
+            border-radius: 16px;
+            padding: 40px 30px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 6px;
+            background: var(--text-main);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.4s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 12px 12px 0px rgba(23,23,23,0.1);
+        }
+
+        .feature-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .feature-card h2 {
+            font-family: 'Millik', sans-serif;
+            font-size: 1.8rem;
+            margin-bottom: 15px;
+            color: var(--text-main);
+        }
+
+        .feature-card p {
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #666;
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+        }
+
+        @keyframes admission {
+            0% { transform: translate(140vw, 0); }
+            100% { transform: translate(13.39vw, 0); }
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Hero 区块 -->
+    <header class="hero-section">
+        <h1>SHINIAN. TODO</h1>
+        <p>双擎驱动的任务管理枢纽。一半是极致掌控，一半是 AI 狂想。</p>
+        <button class="cta-btn" onclick="alert('App下载指引或跳转链接')">立即搭载体验</button>
+    </header>
+
+    <!-- 界面展示画廊 -->
+    <section id="banner">
+        <div class="img-list img-wrapper">
+            <!-- 占位结构，由 JS 动态渲染 -->
+        </div>
+    </section>
+
+    <!-- 画廊控制按钮 -->
+    <div class="btn-group">
+        <button class="last btn">
+            <!-- 左箭头 SVG -->
+            <svg class="icon left" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                <path d="M862.485 481.154H234.126l203.3-203.3c12.497-12.497 12.497-32.758 0-45.255s-32.758-12.497-45.255 0L135.397 489.373c-12.497 12.497-12.497 32.758 0 45.254l256.774 256.775c6.249 6.248 14.438 9.372 22.627 9.372s16.379-3.124 22.627-9.372c12.497-12.497 12.497-32.759 0-45.255l-203.3-203.301h628.36c17.036 0 30.846-13.81 30.846-30.846s-13.81-30.846-30.846-30.846z"></path>
+            </svg>
+        </button>
+        <button class="next btn">
+            <!-- 右箭头 SVG -->
+            <svg class="icon right" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+                <path d="M862.485 481.154H234.126l203.3-203.3c12.497-12.497 12.497-32.758 0-45.255s-32.758-12.497-45.255 0L135.397 489.373c-12.497 12.497-12.497 32.758 0 45.254l256.774 256.775c6.249 6.248 14.438 9.372 22.627 9.372s16.379-3.124 22.627-9.372c12.497-12.497 12.497-32.759 0-45.255l-203.3-203.301h628.36c17.036 0 30.846-13.81 30.846-30.846s-13.81-30.846-30.846-30.846z"></path>
+            </svg>
+        </button>
+    </div>
+
+    <!-- 核心功能区块 -->
+    <section class="features-section">
+        <div class="feature-card">
+            <div class="feature-icon">🌗</div>
+            <h2>双擎掌控</h2>
+            <p>融合传统清单的秩序美感与 AI 的无限潜能。底部导航无缝切分 <strong>Yourself (手动模式)</strong> 与 <strong>Itself (AI接管)</strong>。无论你想精确掌握每一个细节，还是慵懒地交由 AI 打理，只需一键切换。</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">⚡️</div>
+            <h2>自然语义直达</h2>
+            <p>彻底告别繁琐的日期与表单拾取器。对它说：“明天下午三点提醒我开会”，内置的 AI 大脑将毫秒级为你精准解析任务拆解，并自动挂载日历 Deadline 与提醒闹钟。</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🧠</div>
+            <h2>个人记忆网络</h2>
+            <p>你的每一个待办记录，都是时空胶囊的一部分。除了待办跟踪，这里更是一个带有时光机属性的记忆中枢，支持自然语言检索你曾留下的全部成长脉络与高价值梳理。</p>
+        </div>
+    </section>
+
+    <!-- 交互脚本 -->
+    <script>
+        // 配置截图画廊数据（请替换为您真实的运行截图链接，这里使用占位图）
+        const CARDS = [
+            { title: "Yourself 手动模式", image: "https://via.placeholder.com/600x1000/171717/ffffff?text=Manual+Mode+App+Screenshot" },
+            { title: "Itself 对话指令", image: "https://via.placeholder.com/600x1000/eeeeee/171717?text=AI+Voice+Mode+App+Screenshot" },
+            { title: "全局数据洞察", image: "https://via.placeholder.com/600x1000/171717/ffffff?text=Data+Charts+App+Screenshot" },
+            { title: "极简日历视图", image: "https://via.placeholder.com/600x1000/eeeeee/171717?text=Calendar+App+Screenshot" }
+        ];
+
+        const imgListOne = document.querySelector('.img-list');
+        const root = document.documentElement;
+        
+        // 动态读取 CSS 变量，计算滚动步长
+        const getCSSVarNum = (varName) => Number(getComputedStyle(root).getPropertyValue(varName).replace("vw", ""));
+        
+        const initSlider = () => {
+            const postSpacing = getCSSVarNum('--post-spacing');
+            const postSize = getCSSVarNum('--post-size');
+            const imgBoxLength = postSize + postSpacing;
+            const totalWidth = imgBoxLength * CARDS.length;
+
+            // 渲染 DOM
+            imgListOne.innerHTML = CARDS.map((card, index) => {
+                const isLast = index === CARDS.length - 1;
+                const style = isLast ? `style="transform: translateX(-${totalWidth}vw);"` : '';
+                return `
+                <div class="img-box" ${isLast ? 'id="last-img-box"' : ''} ${style}>
+                    <img src="${card.image}" alt="${card.title} 界面截图">
+                    <div class="info">
+                        <h3>${card.title}</h3>
+                    </div>
+                </div>
+                `;
+            }).join('');
+
+            return { imgBoxLength, totalWidth };
+        };
+
+        const { imgBoxLength, totalWidth } = initSlider();
+
+        let imgBoxList = Array.from(document.querySelectorAll('.img-list .img-box'));
+        const imgBoxCount = imgBoxList.length;
+        const lastImgBox = document.getElementById('last-img-box');
+        
+        let index = 0;
+        let animationTime = 0.5;
+        let timer = null;
+
+        // 初始化排列：将最后一张调到最前端以适应无线滚动逻辑
+        if(imgBoxList.length > 0) {
+            imgBoxList.unshift(imgBoxList.pop());
+            imgListOne.style.transition = `${animationTime}s ease`;
+        }
+
+        function clickHandle(direction) {
+            if (direction === 'next') {
+                index--;
+                imgListOne.style.left = `${imgBoxLength * index}vw`;
+                setTimeout(() => {
+                    imgListOne.style.transition = 'none';
+                    if (Math.abs(index) === imgBoxCount) {
+                        index = 0;
+                        imgListOne.style.left = '0';
+                        imgBoxList.forEach(item => {
+                            item.style.transform = item.id === 'last-img-box' ? `translateX(-${totalWidth}vw)` : 'none';
+                        });
+                    } else {
+                        if (imgBoxList[0].id === 'last-img-box') {
+                            lastImgBox.style.transition = 'none';
+                            lastImgBox.style.transform = 'translateX(0px)';
+                        } else if (index >= 0) {
+                            imgBoxList[0].style.transform = 'none';
+                        } else {
+                            imgBoxList[0].style.transform = `translateX(${totalWidth}vw)`;
+                        }
+                    }
+                    imgBoxList.push(imgBoxList.shift());
+                }, animationTime * 1000);
+            } else {
+                index++;
+                imgBoxList.unshift(imgBoxList.pop());
+                
+                if (imgBoxList[0].id === 'last-img-box' && index !== 0) {
+                    imgBoxList[0].style.transform = `translateX(-${totalWidth * 2}vw)`;
+                } else if (index < 0) {
+                    imgBoxList[0].style.transform = 'none';
+                } else {
+                    imgBoxList[0].style.transform = `translateX(-${totalWidth}vw)`;
+                }
+                
+                imgListOne.style.left = `${imgBoxLength * index}vw`;
+                lastImgBox.style.transition = 'none';
+                
+                if (Math.abs(index) === imgBoxCount) {
+                    index = 0;
+                    setTimeout(() => {
+                        imgListOne.style.transition = 'none';
+                        imgListOne.style.left = '0';
+                        imgBoxList.forEach(item => {
+                            item.style.transform = item.id === 'last-img-box' ? `translateX(-${totalWidth}vw)` : 'none';
+                        });
+                    }, animationTime * 1000);
+                }
+            }
+            imgListOne.style.transition = `${animationTime}s ease`;
+        }
+
+        // 节流函数防误触
+        function throttle(fn, delay) {
+            return function (...args) {
+                if (timer) return;
+                fn.apply(this, args);
+                timer = setTimeout(() => { timer = null; }, delay);
+            }
+        }
+
+        document.querySelector('.next').onclick = throttle(() => clickHandle('next'), animationTime * 1000);
+        document.querySelector('.last').onclick = throttle(() => clickHandle('last'), animationTime * 1000);
+    </script>
+</body>
+</html>
