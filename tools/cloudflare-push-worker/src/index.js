@@ -2,8 +2,104 @@ import webpush from 'web-push';
 
 const SUBSCRIPTION_PREFIX = 'subscription:';
 const JOB_PREFIX = 'job:';
+const DEFAULT_BLOCK_COUNTRIES = 'FR';
+const DEFAULT_BLOCK_AI_CRAWLERS = '1';
+
+const AI_CRAWLER_TOKENS = [
+  'gptbot',
+  'chatgpt-user',
+  'oai-searchbot',
+  'ccbot',
+  'anthropic-ai',
+  'claudebot',
+  'perplexitybot',
+  'perplexity-user',
+  'bytespider',
+  'cohere-ai',
+  'cohere-training-data-crawler',
+  'amazonbot',
+  'omgilibot',
+  'diffbot',
+  'petalbot',
+  'applebot-extended',
+  'duckassistbot',
+  'youbot',
+  'imagesiftbot',
+];
 
 let configuredVapidKey = '';
+
+function parseCsvList(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function isTruthyFlag(rawValue, fallback = true) {
+  const value = String(rawValue ?? '').trim().toLowerCase();
+  if (!value) return fallback;
+  return !['0', 'false', 'off', 'no'].includes(value);
+}
+
+function getBlockedCountrySet(env) {
+  const configured = String(env.BLOCK_COUNTRIES || DEFAULT_BLOCK_COUNTRIES);
+  return new Set(parseCsvList(configured).map((value) => value.toUpperCase()));
+}
+
+function getRequestCountry(request) {
+  return String(request?.cf?.country || '').trim().toUpperCase();
+}
+
+function getBlockedAiCrawlerTokens(env) {
+  const defaults = AI_CRAWLER_TOKENS;
+  const extra = parseCsvList(env.EXTRA_BLOCKED_AI_BOTS || '').map((value) =>
+    value.toLowerCase(),
+  );
+  return [...defaults, ...extra];
+}
+
+function getAllowedCrawlerPaths(env) {
+  const configured = parseCsvList(env.ALLOW_CRAWLER_PATHS || '/health');
+  return new Set(configured);
+}
+
+function getMatchedAiCrawlerToken(request, env) {
+  const blockAiCrawlers = isTruthyFlag(
+    env.BLOCK_AI_CRAWLERS,
+    DEFAULT_BLOCK_AI_CRAWLERS === '1',
+  );
+  if (!blockAiCrawlers) return '';
+
+  const userAgent = String(request.headers.get('User-Agent') || '').toLowerCase();
+  if (!userAgent) return '';
+
+  const tokens = getBlockedAiCrawlerTokens(env);
+  const token = tokens.find((entry) => userAgent.includes(entry));
+  return token || '';
+}
+
+function shouldLogBlockedRequest(env) {
+  return isTruthyFlag(env.LOG_BLOCKED_REQUESTS, true);
+}
+
+function maybeLogBlockedRequest(env, details) {
+  if (!shouldLogBlockedRequest(env)) return;
+  console.warn('[pickplan-push] blocked request', details);
+}
+
+function forbiddenResponse(request, env, reason, details = {}) {
+  return jsonResponse(
+    request,
+    env,
+    {
+      ok: false,
+      error: reason,
+      ...details,
+    },
+    { status: 403 },
+  );
+}
 
 function buildCorsHeaders(request, env) {
   const headers = new Headers();
@@ -53,6 +149,36 @@ function jsonResponse(request, env, payload, init = {}) {
 
 function errorResponse(request, env, status, message) {
   return jsonResponse(request, env, { error: message }, { status });
+}
+
+function normalizeUpstreamBaseUrl(rawBaseUrl) {
+  const clean = String(rawBaseUrl || '').trim().replace(/\s+/g, '');
+  if (!clean) return '';
+  return clean.endsWith('/') ? clean.slice(0, -1) : clean;
+}
+
+function extractTextFromModelContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item.text === 'string') return item.text;
+        if (item && item.type === 'output_text' && typeof item.text === 'string') {
+          return item.text;
+        }
+        return '';
+      })
+      .join('\n')
+      .trim();
+  }
+  return '';
+}
+
+function extractJsonObjectText(rawText) {
+  const text = String(rawText || '').trim();
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  return fenced ? fenced[1].trim() : text;
 }
 
 function subscriptionKey(subscriberId) {
@@ -362,10 +488,208 @@ async function handleTest(request, env) {
   }
 }
 
+async function handleAiModels(request, env) {
+  const payload = await parseJson(request);
+  const upstreamBaseUrl = normalizeUpstreamBaseUrl(payload?.upstreamBaseUrl);
+  const apiKey = String(payload?.apiKey || '').trim();
+
+  if (!upstreamBaseUrl || !apiKey) {
+    return errorResponse(
+      request,
+      env,
+      400,
+      'upstreamBaseUrl and apiKey are required.',
+    );
+  }
+
+  try {
+    const upstreamResp = await fetch(`${upstreamBaseUrl}/models`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const bodyText = await upstreamResp.text();
+    if (!upstreamResp.ok) {
+      return errorResponse(
+        request,
+        env,
+        upstreamResp.status,
+        bodyText || 'Upstream /models failed.',
+      );
+    }
+
+    let parsed = {};
+    try {
+      parsed = JSON.parse(bodyText || '{}');
+    } catch (_) {
+      parsed = {};
+    }
+
+    return jsonResponse(request, env, {
+      ok: true,
+      providerStatusCode: upstreamResp.status,
+      data: parsed,
+    });
+  } catch (error) {
+    return errorResponse(request, env, 500, error?.message || String(error));
+  }
+}
+
+async function handleAiParse(request, env) {
+  const payload = await parseJson(request);
+  const upstreamBaseUrl = normalizeUpstreamBaseUrl(payload?.upstreamBaseUrl);
+  const apiKey = String(payload?.apiKey || '').trim();
+  const modelName = String(payload?.modelName || '').trim();
+  const text = String(payload?.text || '').trim();
+
+  if (!upstreamBaseUrl || !apiKey || !modelName || !text) {
+    return errorResponse(
+      request,
+      env,
+      400,
+      'upstreamBaseUrl, apiKey, modelName and text are required.',
+    );
+  }
+
+  const requestBody = {
+    model: modelName,
+    messages: [
+      {
+        role: 'system',
+        content: `You are a task parser.
+Extract a task from user text and return JSON only (no markdown), with this schema:
+{
+  "task": "string",
+  "reminder_time": "ISO8601 string or null",
+  "deadline": "ISO8601 string or null"
+}
+Current time: ${new Date().toISOString()}`,
+      },
+      {
+        role: 'user',
+        content: text,
+      },
+    ],
+    temperature: 0.1,
+  };
+
+  try {
+    const upstreamResp = await fetch(`${upstreamBaseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const bodyText = await upstreamResp.text();
+    if (!upstreamResp.ok) {
+      return errorResponse(
+        request,
+        env,
+        upstreamResp.status,
+        bodyText || 'Upstream /chat/completions failed.',
+      );
+    }
+
+    let decoded;
+    try {
+      decoded = JSON.parse(bodyText || '{}');
+    } catch {
+      return errorResponse(
+        request,
+        env,
+        502,
+        'Invalid upstream JSON response from /chat/completions.',
+      );
+    }
+
+    const rawContent = extractTextFromModelContent(
+      decoded?.choices?.[0]?.message?.content,
+    );
+    if (!rawContent) {
+      return errorResponse(
+        request,
+        env,
+        502,
+        'No model content received from upstream response.',
+      );
+    }
+
+    const jsonText = extractJsonObjectText(rawContent);
+    let parsed;
+    try {
+      parsed = JSON.parse(jsonText);
+    } catch {
+      return errorResponse(
+        request,
+        env,
+        502,
+        `Model content is not valid JSON: ${rawContent.slice(0, 300)}`,
+      );
+    }
+
+    return jsonResponse(request, env, {
+      task: String(parsed?.task || '').trim(),
+      reminder_time:
+        parsed?.reminder_time == null ? null : String(parsed.reminder_time),
+      deadline: parsed?.deadline == null ? null : String(parsed.deadline),
+    });
+  } catch (error) {
+    return errorResponse(request, env, 500, error?.message || String(error));
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = url.pathname;
+    const country = getRequestCountry(request);
+    const blockedCountries = getBlockedCountrySet(env);
+    const shouldBlockCountry = country && blockedCountries.has(country);
+
+    if (shouldBlockCountry) {
+      maybeLogBlockedRequest(env, {
+        reason: 'geo',
+        country,
+        method: request.method,
+        pathname,
+      });
+      return forbiddenResponse(request, env, 'Access denied from your region.', {
+        reason: 'geo_block',
+        country,
+      });
+    }
+
+    const matchedAiCrawlerToken = getMatchedAiCrawlerToken(request, env);
+    const allowedCrawlerPaths = getAllowedCrawlerPaths(env);
+    const isCrawlerReadMethod =
+      request.method === 'GET' || request.method === 'HEAD';
+
+    if (
+      matchedAiCrawlerToken &&
+      isCrawlerReadMethod &&
+      !allowedCrawlerPaths.has(pathname)
+    ) {
+      maybeLogBlockedRequest(env, {
+        reason: 'ai_crawler',
+        token: matchedAiCrawlerToken,
+        method: request.method,
+        pathname,
+      });
+      return forbiddenResponse(
+        request,
+        env,
+        'Access denied for automated crawler traffic.',
+        {
+          reason: 'crawler_block',
+        },
+      );
+    }
 
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -401,6 +725,14 @@ export default {
 
       if (request.method === 'POST' && pathname === '/api/push/test') {
         return handleTest(request, env);
+      }
+
+      if (request.method === 'POST' && pathname === '/api/ai/models') {
+        return handleAiModels(request, env);
+      }
+
+      if (request.method === 'POST' && pathname === '/api/ai/parse') {
+        return handleAiParse(request, env);
       }
 
       if (request.method === 'POST' && pathname === '/api/push/process-due') {

@@ -11,6 +11,8 @@ It exposes the following API endpoints:
 - `POST /api/push/schedule`
 - `POST /api/push/cancel`
 - `POST /api/push/test`
+- `POST /api/ai/models`
+- `POST /api/ai/parse`
 
 ## What it uses
 
@@ -111,6 +113,9 @@ Or edit `web/push_config.js` directly.
 The frontend can also fetch the public VAPID key from
 `GET /api/push/public-key`, so you do not need to hardcode it into the web app.
 
+For web AI connections, the app can now fallback to this Worker as a proxy when
+direct browser-to-provider requests are blocked by CORS/network policies.
+
 ## 5) GitHub deployment
 
 The repository includes a GitHub Actions workflow:
@@ -131,3 +136,27 @@ Runtime secrets still need to exist on the Worker:
 - `VAPID_PUBLIC_KEY`
 - `VAPID_PRIVATE_KEY`
 - `CORS_ORIGIN`
+
+## 6) Geo and AI crawler blocking
+
+This Worker now supports request filtering before route handling.
+
+Optional env vars:
+
+- `BLOCK_COUNTRIES`
+  - comma-separated country codes, default: `FR`
+  - example: `FR,RU`
+- `BLOCK_AI_CRAWLERS`
+  - `1` enable AI crawler UA blocking (default), `0` disable
+- `EXTRA_BLOCKED_AI_BOTS`
+  - extra UA tokens, comma-separated
+- `ALLOW_CRAWLER_PATHS`
+  - allowlist paths for crawler traffic, default: `/health`
+- `LOG_BLOCKED_REQUESTS`
+  - `1` log blocked requests, `0` disable logs
+
+Note:
+
+- `robots.txt` in `web/` is advisory for compliant bots.
+- For full-site hard blocking on Cloudflare Pages, also add WAF custom rules in
+  Cloudflare dashboard.

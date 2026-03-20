@@ -120,6 +120,20 @@ These must be configured on the deployed Worker itself:
 - `VAPID_PRIVATE_KEY`
 - `CORS_ORIGIN`
 
+Optional security controls for traffic filtering:
+
+- `BLOCK_COUNTRIES`
+  - comma-separated country codes (ISO 3166-1 alpha-2), default: `FR`
+  - example: `FR,RU`
+- `BLOCK_AI_CRAWLERS`
+  - `1` to enable AI crawler UA blocking (default), `0` to disable
+- `EXTRA_BLOCKED_AI_BOTS`
+  - optional extra bot UA tokens, comma-separated
+- `ALLOW_CRAWLER_PATHS`
+  - optional allowlist paths for blocked crawler traffic, default: `/health`
+- `LOG_BLOCKED_REQUESTS`
+  - `1` to log blocked requests in Worker logs (default), `0` to disable
+
 You can add them from the Cloudflare dashboard or via Wrangler:
 
 ```bash

@@ -11,7 +11,7 @@ class StorageService {
   static const String _languageCodeKey = 'pickplan_language_code_v1';
 
   static const String defaultBaseUrl = 'https://api.openai.com/v1';
-  static const String defaultModelName = 'gpt-3.5-turbo';
+  static const String defaultModelName = 'gpt-4o-mini';
 
   final SharedPreferences _prefs;
 
@@ -67,7 +67,14 @@ class StorageService {
   }
 
   String getModelName() {
-    return _prefs.getString(_modelNameKey) ?? defaultModelName;
+    final stored = _prefs.getString(_modelNameKey);
+    if (stored == null || stored.trim().isEmpty) {
+      return defaultModelName;
+    }
+    if (stored.trim() == 'gpt-3.5-turbo') {
+      return defaultModelName;
+    }
+    return stored;
   }
 
   Future<void> saveModelName(String modelName) async {

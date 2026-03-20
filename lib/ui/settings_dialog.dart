@@ -1,10 +1,13 @@
 
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/services/ai_proxy_endpoint.dart';
 import '../core/services/language_controller.dart';
 import '../core/services/storage_service.dart';
 import 'theme.dart';
@@ -52,7 +55,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     {
       'name': 'OpenAI',
       'url': 'https://api.openai.com/v1',
-      'model': 'gpt-3.5-turbo',
+      'model': 'gpt-4o-mini',
     },
     {
       'name': 'Custom',
@@ -133,23 +136,45 @@ class _SettingsDialogState extends State<SettingsDialog> {
       final finalBaseUrl = cleanBaseUrl.endsWith('/')
           ? cleanBaseUrl.substring(0, cleanBaseUrl.length - 1)
           : cleanBaseUrl;
-      final uri = Uri.parse('$finalBaseUrl/models');
-      final response = await http.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-          'Content-Type': 'application/json',
-        },
-      ).timeout(const Duration(seconds: 10));
+      final proxyBaseUrl = resolveAiProxyBaseUrl();
+      final shouldUseProxy = kIsWeb && proxyBaseUrl != null;
+
+      late final http.Response response;
+      if (shouldUseProxy) {
+        response = await http
+            .post(
+              Uri.parse('$proxyBaseUrl/api/ai/models'),
+              headers: const {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'upstreamBaseUrl': finalBaseUrl,
+                'apiKey': apiKey,
+              }),
+            )
+            .timeout(const Duration(seconds: 15));
+      } else {
+        final uri = Uri.parse('$finalBaseUrl/models');
+        response = await http.get(
+          uri,
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+        ).timeout(const Duration(seconds: 10));
+      }
 
       if (!mounted) return;
       setState(() {
         _isTesting = false;
         if (response.statusCode == 200) {
-          _testResult = languageController.t(
-            zh: '\u8fde\u63a5\u6210\u529f\uff08200\uff09\u3002',
-            en: 'Connection OK (200).',
-          );
+          _testResult = shouldUseProxy
+              ? languageController.t(
+                  zh: '\u8fde\u63a5\u6210\u529f\uff08200\uff09\u3002\u5df2\u542f\u7528 Web \u4ee3\u7406\u6a21\u5f0f\u3002',
+                  en: 'Connection OK (200). Web proxy mode is active.',
+                )
+              : languageController.t(
+                  zh: '\u8fde\u63a5\u6210\u529f\uff08200\uff09\u3002',
+                  en: 'Connection OK (200).',
+                );
           _testResultColor = Colors.green;
         } else {
           final body = response.body.length > 80
